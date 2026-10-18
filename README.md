@@ -28,3 +28,5 @@ Khi build trên GitHub Actions, `basePath` tự đặt thành `/Chiem-Tinh-Ung-D
 Swiss Ephemeris (AGPL-3.0, https://www.astro.com/swisseph/) ·
 ayanāṃśa Lahiri · nhà Whole Sign từ Lagna · Vimshottari từ Nakshatra của
 Mặt Trăng · Rahu dùng Mean Node.
+
+Trang đang được deploy tự động bằng GitHub Actions.
