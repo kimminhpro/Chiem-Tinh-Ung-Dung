@@ -7,7 +7,13 @@ import { NatalChart } from "./NatalChart";
 type Tab = "sky" | "natal";
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("sky");
+  // Mở bằng liên kết chia sẻ lá số (#laso=...): vào thẳng tab Lá số.
+  const [tab, setTab] = useState<Tab>(() =>
+    typeof window !== "undefined" &&
+    window.location.hash.startsWith("#laso=")
+      ? "natal"
+      : "sky",
+  );
   const [playing, setPlaying] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [resetTick, setResetTick] = useState(0);
