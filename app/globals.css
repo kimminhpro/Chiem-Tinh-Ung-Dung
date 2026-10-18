@@ -971,6 +971,19 @@ aside { padding: 26px 24px 20px; }
 }
 .natal-submit:disabled { opacity: 0.6; cursor: wait; }
 
+.natal-actions {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.share-button, .print-button {
+  border: 1px solid var(--line-strong); background: transparent; border-radius: 9px;
+  color: var(--ivory); padding: 11px 18px; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; transition: 160ms ease; min-height: 44px;
+}
+.share-button:hover, .print-button:hover {
+  border-color: var(--gold); background: rgba(230, 181, 104, 0.08);
+}
+.share-button { border-color: var(--gold); color: var(--gold); }
+
 .natal-result-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;
   margin-bottom: 20px;
@@ -1010,6 +1023,13 @@ aside { padding: 26px 24px 20px; }
 .natal-insight h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
 .natal-insight h3 span { color: var(--muted); font-weight: 400; font-size: 12px; }
 .natal-insight ul { margin: 0; padding-left: 20px; display: grid; gap: 9px; font-size: 13px; line-height: 1.65; color: var(--ivory); }
+.natal-insight h4 {
+  margin: 18px 0 10px; font-size: 13.5px; font-weight: 700; color: var(--gold);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.natal-insight h4:first-of-type { margin-top: 4px; }
+.natal-insight .dasha-read { font-size: 13px; line-height: 1.7; color: var(--ivory); margin: 0; }
+.natal-insight .natal-note { margin-top: 12px; }
 
 .natal-privacy {
   margin-top: 22px; padding: 16px 18px; border: 1px dashed var(--line-strong);
@@ -1018,6 +1038,45 @@ aside { padding: 26px 24px 20px; }
 .natal-privacy p { margin: 0 0 8px; }
 .natal-privacy p:last-child { margin-bottom: 0; }
 .natal-privacy b { color: var(--ivory); }
+
+/* ===== Quá cảnh hôm nay (Phase 2) ===== */
+.natal-transit {
+  margin-top: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 14px;
+  background: rgba(7, 27, 35, 0.58);
+}
+.transit-summary { display: grid; gap: 10px; margin-top: 4px; }
+.transit-summary .natal-note { margin-top: 10px; }
+.transit-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; }
+.transit-list li {
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px;
+}
+.transit-list li b { min-width: 74px; }
+.transit-list li span { color: var(--muted); font-size: 11.5px; }
+.transit-list li em { font-style: normal; color: var(--gold); }
+
+/* ===== In lá số (Phase 1: chia sẻ & in ấn) ===== */
+@media print {
+  /* Ẩn mọi thứ ngoài kết quả lá số */
+  .site-header, .site-footer, .natal-form-card, .natal-actions,
+  .view-mode, .time-dock, .sky-actions { display: none !important; }
+  .natal-tab { padding: 0; max-width: none; }
+  .natal-grid { display: block; }
+  /* Nền trắng chữ đen để tiết kiệm mực */
+  body { background: #fff !important; }
+  .natal-result, .natal-result * {
+    background: transparent !important;
+    color: #000 !important;
+    border-color: #999 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: economy;
+    print-color-adjust: economy;
+  }
+  .natal-result a { text-decoration: none; }
+  .natal-dasha, .natal-insight, .natal-transit { break-inside: avoid; }
+  .dasha-timeline li.current em { border: 1px solid #000 !important; }
+}
 
 @media (max-width: 900px) {
   .natal-grid { grid-template-columns: 1fr; }
