@@ -8,6 +8,9 @@ type Tab = "sky" | "natal";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("sky");
+  const [playing, setPlaying] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
+  const [resetTick, setResetTick] = useState(0);
 
   return (
     <div className="site">
@@ -19,6 +22,27 @@ export default function Home() {
             <small>Jyotish Vệ Đà cho đời sống · công việc · trading</small>
           </span>
         </div>
+        {tab === "sky" && (
+          <div className="sky-actions">
+            <button
+              className="now-button"
+              type="button"
+              onClick={() => setResetTick((tick) => tick + 1)}
+            >
+              <span>◷</span> Hiện tại
+            </button>
+            <button
+              className="play-button"
+              type="button"
+              onClick={() => setPlaying((value) => !value)}
+              aria-pressed={playing}
+              disabled={!engineReady}
+            >
+              <span>{playing ? "Ⅱ" : "▶"}</span>
+              {playing ? "Tạm dừng" : "Mô phỏng"}
+            </button>
+          </div>
+        )}
         <nav className="site-tabs" aria-label="Chế độ xem">
           <button
             type="button"
@@ -41,7 +65,12 @@ export default function Home() {
 
       <div className="site-body">
         {tab === "sky" ? (
-          <JyotishOrbit initialDate={new Date().toISOString()} />
+          <JyotishOrbit
+            initialDate={new Date().toISOString()}
+            playing={playing}
+            resetTick={resetTick}
+            onEngineReadyChange={setEngineReady}
+          />
         ) : (
           <main className="natal-tab">
             <NatalChart />
