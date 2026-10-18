@@ -125,11 +125,22 @@ function MoonPhaseCard({ grahas }: { grahas: Graha[] }) {
   );
 }
 
-export function JyotishOrbit({ initialDate }: { initialDate: string }) {
+type JyotishOrbitProps = {
+  initialDate: string;
+  playing: boolean;
+  resetTick: number;
+  onEngineReadyChange: (ready: boolean) => void;
+};
+
+export function JyotishOrbit({
+  initialDate,
+  playing,
+  resetTick,
+  onEngineReadyChange,
+}: JyotishOrbitProps) {
   const [date, setDate] = useState(() => new Date(initialDate));
   const [observer, setObserver] =
     useState<ObserverLocation>(DEFAULT_OBSERVER);
-  const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selected, setSelected] = useState("sun");
   const [showLabels, setShowLabels] = useState(false);
@@ -226,6 +237,11 @@ export function JyotishOrbit({ initialDate }: { initialDate: string }) {
   }, [playing, speed]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- không phải derived state, đây là hành động từ nút bấm bên ngoài
+    if (resetTick > 0) setDate(new Date());
+  }, [resetTick]);
+
+  useEffect(() => {
     let cancelled = false;
     calculateSwissGrahas(date, observer.latitude, observer.longitude)
       .then((result) => {
@@ -237,14 +253,17 @@ export function JyotishOrbit({ initialDate }: { initialDate: string }) {
         setJulianDay(result.julianDay);
         setEngineVersion(result.version);
         setEngineStatus("ready");
+        onEngineReadyChange(true);
       })
       .catch(() => {
-        if (!cancelled) setEngineStatus("error");
+        if (cancelled) return;
+        setEngineStatus("error");
+        onEngineReadyChange(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [date, observer.latitude, observer.longitude]);
+  }, [date, observer.latitude, observer.longitude, onEngineReadyChange]);
 
   const chosen = grahas.find((graha) => graha.id === selected) ?? null;
   const chosenRashi = chosen
@@ -262,35 +281,6 @@ export function JyotishOrbit({ initialDate }: { initialDate: string }) {
 
   return (
     <main className={showLabels ? "" : "labels-hidden"}>
-      <header className="topbar">
-        <a className="brand" href="#" aria-label="Jyotish Orbit">
-          <span className="brand-mark">✺</span>
-          <span>
-            <strong>Jyotish Orbit</strong>
-            <small>Bầu trời Vệ Đà</small>
-          </span>
-        </a>
-        <div className="top-actions">
-          <button
-            className="now-button"
-            type="button"
-            onClick={() => setDate(new Date())}
-          >
-            <span>◷</span> Hiện tại
-          </button>
-          <button
-            className="play-button"
-            type="button"
-            onClick={() => setPlaying((value) => !value)}
-            aria-pressed={playing}
-            disabled={engineStatus !== "ready"}
-          >
-            <span>{playing ? "Ⅱ" : "▶"}</span>
-            {playing ? "Tạm dừng" : "Mô phỏng"}
-          </button>
-        </div>
-      </header>
-
       <div className="workspace">
         <section className="sky">
           <div className="sky-heading">
