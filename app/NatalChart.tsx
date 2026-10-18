@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { calculateSwissGrahas } from "./swiss";
 import { zonedDateTimeToUtc } from "./observer";
 import { D1Chart } from "./D1Chart";
 import { PositionList } from "./PositionList";
+import { encodeShare, parseShareHash, type SharePayload } from "./share";
+import { TransitToday } from "./TransitToday";
 import {
   formatDegree,
   getNakshatra,
@@ -20,25 +22,24 @@ import {
   type Mahadasha,
 } from "./dasha";
 import { BIRTHPLACES, CUSTOM_PLACE_ID } from "./places";
+import {
+  EXALTATION_SIGN,
+  describeDashaCurrent,
+  describeGraha,
+  detectYogas,
+  houseFromLagna,
+  isRetro,
+} from "./natal-analysis";
 
-/** Vượng địa chuẩn Jyotish: graha -> sign index (0=Aries). Hãm = cung đối. */
-const EXALTATION_SIGN: Record<string, number> = {
-  sun: 0,
-  moon: 1,
-  mars: 9,
-  mercury: 5,
-  jupiter: 3,
-  venus: 11,
-  saturn: 6,
-};
-
-type NatalResult = {
+export type NatalResult = {
   name: string;
   grahas: Graha[];
   lagnaLongitude: number;
   chandraMode: boolean;
   moonLongitude: number;
   ayanamsa: number;
+  latitude: number;
+  longitude: number;
   periods: Mahadasha[];
   current: DashaCurrent | null;
   asOf: string;
@@ -55,19 +56,13 @@ const toNavamsaLagna = (lagnaLongitude: number): number => {
   return sign * 30 + (lagnaLongitude % 30);
 };
 
-const houseFromLagna = (longitude: number, lagnaLongitude: number) =>
-  (Math.floor(longitude / 30) - Math.floor(lagnaLongitude / 30) + 12) % 12 + 1;
-
 function Interpretation({ result }: { result: NatalResult }) {
   const { grahas, lagnaLongitude, chandraMode, moonLongitude } = result;
   const lagnaSign = Math.floor(lagnaLongitude / 30);
   const lagnaNak = getNakshatra(lagnaLongitude);
-  const moon = grahas.find((g) => g.id === "moon")!;
   const moonSign = Math.floor(moonLongitude / 30);
   const moonNak = getNakshatra(moonLongitude);
-  const retro = grahas.filter(
-    (g) => g.retrograde && g.id !== "rahu" && g.id !== "ketu",
-  );
+  const retro = grahas.filter(isRetro);
   const exalted = grahas.filter(
     (g) => EXALTATION_SIGN[g.id] === Math.floor(g.longitude / 30),
   );
@@ -80,14 +75,15 @@ function Interpretation({ result }: { result: NatalResult }) {
     [1, 4, 7, 10].includes(houseFromLagna(g.longitude, lagnaLongitude)),
   ).length;
 
-  const bullets: string[] = [
+  // (a) Tổng quan — giữ gọn các bullet cốt lõi
+  const overview: string[] = [
     `${chandraMode ? "Chandra Lagna" : "Cung Mọc (Lagna)"}: ${RASHIS[lagnaSign][1]} ${RASHIS[lagnaSign][2]} — Nakshatra ${lagnaNak.name}, pada ${lagnaNak.pada}.`,
     `Mặt Trăng ở ${RASHIS[moonSign][1]} — Nakshatra ${moonNak.name} pada ${moonNak.pada}, chủ tinh Nakshatra: ${DASHA_LORD_VI[nakshatraLord(moonLongitude)]}.`,
     result.current
       ? `Đang trong đại vận ${DASHA_LORD_VI[result.current.mahadasha]} (${result.current.mahadashaStart} → ${result.current.mahadashaEnd}), tiểu vận ${DASHA_LORD_VI[result.current.antardasha]} (đến ${result.current.antardashaEnd}), chi vận ${DASHA_LORD_VI[result.current.pratyantardasha]} (đến ${result.current.pratyantardashaEnd}).`
       : "Chưa xác định được vận hiện tại.",
     retro.length > 0
-      ? `Hành tinh nghịch hành: ${retro.map((g) => g.name).join(", ")} — năng lượng hướng nội, cần chiêm nghiệm kỹ trước khi hành động.`
+      ? `Hành tinh nghịch hành: ${retro.map((g) => g.name).join(", ")} — năng lượng hướng nội, trì hoãn rồi bùng phát (wiki/02).`
       : "Không có hành tinh nghịch hành (ngoài Rahu/Ketu luôn đi ngược).",
     exalted.length > 0
       ? `Hành tinh vượng: ${exalted.map((g) => `${g.name} ở ${RASHIS[Math.floor(g.longitude / 30)][1]}`).join(", ")}.`
@@ -95,35 +91,93 @@ function Interpretation({ result }: { result: NatalResult }) {
     debilitated.length > 0
       ? `Hành tinh hãm: ${debilitated.map((g) => `${g.name} ở ${RASHIS[Math.floor(g.longitude / 30)][1]}`).join(", ")} — điểm cần rèn luyện, không phải điểm xấu tuyệt đối.`
       : "Không có hành tinh hãm địa.",
-    `Có ${kendraCount}/9 graha ở kendra (nhà 1, 4, 7, 10) — trụ cột của lá số.`,
+    `Có ${kendraCount}/9 graha ở kendra (nhà 1, 4, 7, 10) — trụ cột của lá số (wiki/03).`,
   ];
 
+  // (b) Từng graha: cung + nhà + tình trạng + ý nghĩa (xem natal-analysis.ts)
+  const perGraha = grahas.map((g) => describeGraha(g, lagnaLongitude));
+
+  // (c) Yoga phát hiện tự động theo quy tắc wiki/06
+  const yogas = detectYogas(grahas, lagnaLongitude, moonLongitude);
+
+  // (d) Vận hạn hiện tại: chủ tinh đại vận làm chủ nhà nào + thế đứng
+  const dashaNote = result.current
+    ? describeDashaCurrent(grahas, lagnaLongitude, result.current)
+    : null;
+
   return (
-    <section className="natal-insight" aria-label="Diễn giải nhanh">
-      <h3>Diễn giải nhanh <span>(tự động · rút gọn)</span></h3>
+    <section className="natal-insight" aria-label="Diễn giải chi tiết">
+      <h3>
+        Diễn giải chi tiết <span>(tự động · rút gọn · tham khảo)</span>
+      </h3>
+
+      <h4>Tổng quan</h4>
       <ul>
-        {bullets.map((text, i) => (
+        {overview.map((text, i) => (
           <li key={i}>{text}</li>
         ))}
       </ul>
+
+      <h4>Từng graha — cung, nhà và tình trạng</h4>
+      <ul>
+        {perGraha.map((text, i) => (
+          <li key={i}>{text}</li>
+        ))}
+      </ul>
+
+      {yogas.length > 0 && (
+        <>
+          <h4>Yoga phát hiện được</h4>
+          <ul>
+            {yogas.map((y) => (
+              <li key={y.name}>
+                <b>{y.name}:</b> {y.detail}
+              </li>
+            ))}
+          </ul>
+          <p className="natal-note">
+            Yoga chỉ phát huy khi đúng dasha của hành tinh liên quan và được
+            quá cảnh kích hoạt (wiki/06).
+          </p>
+        </>
+      )}
+
+      {dashaNote && (
+        <>
+          <h4>Vận hạn hiện tại</h4>
+          <p className="dasha-read">{dashaNote}</p>
+        </>
+      )}
     </section>
   );
 }
 
 export function NatalChart() {
-  const [name, setName] = useState("");
-  const [birthDate, setBirthDate] = useState("1990-01-01");
-  const [birthTime, setBirthTime] = useState("12:00");
-  const [unknownTime, setUnknownTime] = useState(false);
-  const [placeId, setPlaceId] = useState("hochiminh");
-  const [customLat, setCustomLat] = useState("10.8231");
-  const [customLon, setCustomLon] = useState("106.6297");
-  const [tzInput, setTzInput] = useState("Asia/Ho_Chi_Minh");
+  // Đọc liên kết chia sẻ (#laso=...) 1 lần duy nhất khi khởi tạo form.
+  // Hash sai/lạ -> null -> form dùng giá trị mặc định, bỏ qua lặng lẽ.
+  const [shared] = useState<SharePayload | null>(() => {
+    try {
+      if (typeof window === "undefined") return null;
+      return parseShareHash(window.location.hash);
+    } catch {
+      return null;
+    }
+  });
+  const [name, setName] = useState(shared?.name ?? "");
+  const [birthDate, setBirthDate] = useState(shared?.birthDate ?? "1990-01-01");
+  const [birthTime, setBirthTime] = useState(shared?.birthTime ?? "12:00");
+  const [unknownTime, setUnknownTime] = useState(shared?.unknownTime ?? false);
+  const [placeId, setPlaceId] = useState(shared?.placeId ?? "hochiminh");
+  const [customLat, setCustomLat] = useState(shared?.customLat ?? "10.8231");
+  const [customLon, setCustomLon] = useState(shared?.customLon ?? "106.6297");
+  const [tzInput, setTzInput] = useState(shared?.tzInput ?? "Asia/Ho_Chi_Minh");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<NatalResult | null>(null);
   const [varga, setVarga] = useState<"D1" | "D9">("D1");
   const [selected, setSelected] = useState("sun");
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
 
   const applyPlace = (id: string) => {
     setPlaceId(id);
@@ -131,14 +185,14 @@ export function NatalChart() {
     if (place) setTzInput(place.timeZone);
   };
 
-  const compute = async () => {
+  const computeWith = async (input: SharePayload) => {
     setError(null);
     setResult(null);
     let latitude: number;
     let longitude: number;
-    if (placeId === CUSTOM_PLACE_ID) {
-      latitude = Number(customLat);
-      longitude = Number(customLon);
+    if (input.placeId === CUSTOM_PLACE_ID) {
+      latitude = Number(input.customLat);
+      longitude = Number(input.customLon);
       if (
         !Number.isFinite(latitude) ||
         !Number.isFinite(longitude) ||
@@ -151,7 +205,7 @@ export function NatalChart() {
         return;
       }
     } else {
-      const place = BIRTHPLACES.find((p) => p.id === placeId);
+      const place = BIRTHPLACES.find((p) => p.id === input.placeId);
       if (!place) {
         setError("Chưa chọn nơi sinh.");
         return;
@@ -160,7 +214,7 @@ export function NatalChart() {
       longitude = place.longitude;
     }
 
-    const tz = tzInput.trim();
+    const tz = input.tzInput.trim();
     try {
       new Intl.DateTimeFormat("en", { timeZone: tz }).format(new Date());
     } catch {
@@ -168,11 +222,11 @@ export function NatalChart() {
       return;
     }
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.birthDate)) {
       setError("Ngày sinh chưa đúng định dạng.");
       return;
     }
-    const timeStr = unknownTime ? "12:00" : birthTime;
+    const timeStr = input.unknownTime ? "12:00" : input.birthTime;
     if (!/^\d{2}:\d{2}$/.test(timeStr)) {
       setError("Giờ sinh chưa đúng định dạng.");
       return;
@@ -180,7 +234,7 @@ export function NatalChart() {
 
     let birthUtc: Date | null;
     try {
-      birthUtc = zonedDateTimeToUtc(`${birthDate}T${timeStr}`, tz);
+      birthUtc = zonedDateTimeToUtc(`${input.birthDate}T${timeStr}`, tz);
     } catch {
       birthUtc = null;
     }
@@ -193,23 +247,31 @@ export function NatalChart() {
     try {
       const res = await calculateSwissGrahas(birthUtc, latitude, longitude);
       const moon = res.grahas.find((g) => g.id === "moon")!;
-      const lagna = unknownTime ? moon.longitude : res.lagnaLongitude;
+      const lagna = input.unknownTime ? moon.longitude : res.lagnaLongitude;
       const { periods, currentAt } = vimshottari(moon.longitude, res.julianDay);
       const nowJd = Date.now() / 86400000 + 2440587.5;
       const asOf = new Date().toISOString().slice(0, 10);
       setResult({
-        name: name.trim(),
+        name: input.name.trim(),
         grahas: res.grahas,
         lagnaLongitude: lagna,
-        chandraMode: unknownTime,
+        chandraMode: input.unknownTime,
         moonLongitude: moon.longitude,
         ayanamsa: res.ayanamsa,
+        latitude,
+        longitude,
         periods,
         current: currentAt(nowJd),
         asOf,
       });
       setSelected("sun");
       setVarga("D1");
+      // Cập nhật URL để liên kết luôn chia sẻ được (không cuộn trang)
+      try {
+        window.history.replaceState(null, "", `#laso=${encodeShare(input)}`);
+      } catch {
+        /* bỏ qua */
+      }
     } catch (e) {
       setError(
         `Không tính được lá số: ${e instanceof Error ? e.message : "lỗi không rõ"}`,
@@ -218,6 +280,52 @@ export function NatalChart() {
       setLoading(false);
     }
   };
+
+  const compute = () =>
+    computeWith({
+      name,
+      birthDate,
+      birthTime,
+      unknownTime,
+      placeId,
+      customLat,
+      customLon,
+      tzInput,
+    });
+
+  const copyShareLink = async () => {
+    const url = window.location.href; // hash #laso=... đã được cập nhật sau mỗi lần tính
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Fallback cho trình duyệt chặn clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch {
+        /* bỏ qua */
+      }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Mở trang bằng liên kết chia sẻ: tự tính lá số 1 lần (form đã điền từ hash).
+  const sharedComputed = useRef(false);
+  useEffect(() => {
+    if (shared && !sharedComputed.current) {
+      sharedComputed.current = true;
+      void computeWith(shared);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const shownGrahas = result
     ? varga === "D9"
@@ -400,6 +508,23 @@ export function NatalChart() {
             </div>
           </div>
 
+          <div className="natal-actions" aria-label="Chia sẻ và in lá số">
+            <button
+              type="button"
+              className="share-button"
+              onClick={copyShareLink}
+            >
+              {copied ? "Đã sao chép!" : "Sao chép liên kết lá số"}
+            </button>
+            <button
+              type="button"
+              className="print-button"
+              onClick={() => window.print()}
+            >
+              In / Lưu PDF
+            </button>
+          </div>
+
           <div className="natal-grid">
             <div>
               <D1Chart
@@ -489,6 +614,8 @@ export function NatalChart() {
               <Interpretation result={result} />
             </div>
           </div>
+
+          <TransitToday result={result} />
 
           <section className="natal-privacy" aria-label="Cam kết riêng tư">
             <p>
